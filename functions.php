@@ -2135,8 +2135,12 @@ function custom_cart_total($order_total) {
         if ($minimum - $subtotal > 0) {
             $difference = $minimum - $subtotal;
             $order_total += $difference;
+            $shipping_tax = WC()->cart->get_shipping_tax();
+            $order_total = (float)$order_total - (float)$shipping_tax; //to saferpay
             return (string)$order_total;
         } else {
+            $shipping_tax = WC()->cart->get_shipping_tax();
+            $order_total = (float)$order_total - (float)$shipping_tax; //to saferppay
             return (string)$order_total;
         }
     }else{

@@ -99,7 +99,7 @@ function saveUserInvoicePayment( $user_id ) {
     update_user_meta($user_id, '_user_invoice_available', ($_POST['invoice_payment']==1 ? 1 : ''));
 }
 
-add_filter('woocommerce_order_subtotal_to_display','fixWCSubtotal',10,3);
+//add_filter('woocommerce_order_subtotal_to_display','fixWCSubtotal',10,3);
 function fixWCSubtotal($subtotal, $compound, $wc) {
 	$tax_display = $tax_display ? $tax_display : get_option( 'woocommerce_tax_display_cart' );
 	$subtotal    = 0;
@@ -145,10 +145,11 @@ function fixWCSubtotal($subtotal, $compound, $wc) {
 
 	return $subtotal;
 }
-add_action( 'woocommerce_admin_order_totals_after_tax', 'actuation_total_in_admin', 200 );
+//add_action( 'woocommerce_admin_order_totals_after_tax', 'actuation_total_in_admin', 200 );
 function actuation_total_in_admin($order_id){
 $order = wc_get_order();
 $order->get_total();
+
 }
 
 function general_admin_notice(){
@@ -157,5 +158,109 @@ function general_admin_notice(){
          echo '<div class="notice notice-success" style="display:flex;"><img src="'.get_stylesheet_directory_uri().'/images/ivato.png" style="width: 30%; max-width: 140px; height: 50px; margin: 5px 10px 0 0;"><p>Bei Fragen oder Problemen helfen wir Ihnen im Rahmen unseres Wordpress Lifecycle-Management gern weiter.<br>Wenden Sie sich dazu bitte an unseren Support unter <a href="mailto:support@ivato.de">support@ivato.de</a>.<br>Wir werden uns schnellstmöglich mit Ihnen in Verbindung setzen.</p></div>';
     }
 }
+
 add_action('admin_notices', 'general_admin_notice');
+
+//Change Vat from total to %
+function my_woocommerce_get_order_item_totals ($total_rows) {
+    $txt = $total_rows['order_total']['value'];
+    preg_match( '/((?:<span).*?(?:span>))/i' , $txt , $matches);
+    $tag1 = $matches[1] . "<span>&nbsp;(incl. 7.7% VAT)</span>";
+    $total_rows['order_total']['value']=$tag1;
+    return $total_rows;
+}
+//add_filter('woocommerce_get_order_item_totals','my_woocommerce_get_order_item_totals');
+
+function my_woocommerce_cart_totals_order_total_html ($arg) {
+    $arg = preg_replace("'<small[^>]*?>.*?</small>'si","",$arg);
+    return $arg . "<span>&nbsp;(incl. 7.7% VAT)</span>";
+}
+//add_filter('woocommerce_cart_totals_order_total_html', 'my_woocommerce_cart_totals_order_total_html');
+////Change Vat from total to %
+function yourname_fix_shipping_tax( $taxes, $price, $rates) {
+$temp = 1;
+    if(wc_prices_include_tax()){
+        return  WC_Tax::calc_inclusive_tax( $price, $rates );
+    }
+    return $taxes;
+}
+
+add_filter( 'woocommerce_calc_shipping_tax', 'yourname_fix_shipping_tax',20,3);
+function yourname_fix_totals( $cart) {
+
+    if(wc_prices_include_tax()){
+        $cart->shipping_total -= $cart->shipping_tax_total;
+
+
+    }
+
+}
+add_filter( 'woocommerce_calculate_totals', 'yourname_fix_totals');
+add_filter('woocommerce_cart_shipping_method_full_label','fix_tax_for_shipping',10,2);
+function fix_tax_for_shipping( $label,$method )
+{
+    $label = $method->get_label();
+    $has_cost = 0 < $method->cost;
+    $hide_cost = !$has_cost && in_array($method->get_method_id(), array('free_shipping', 'local_pickup'), true);
+
+    if ($has_cost && !$hide_cost) {
+        if (WC()->cart->display_prices_including_tax()) {
+            $label .= ': ' . wc_price($method->cost);
+            if ($method->get_shipping_tax() > 0 && !wc_prices_include_tax()) {
+                $label .= ' <small class="tax_label">' . WC()->countries->inc_tax_or_vat() . '</small>';
+            }
+        } else {
+            $label .= ': ' . wc_price($method->cost);
+            if ($method->get_shipping_tax() > 0 && wc_prices_include_tax()) {
+                $label .= ' <small class="tax_label">' . WC()->countries->ex_tax_or_vat() . '</small>';
+            }
+        }
+    }
+
+    return $label;
+}
+add_filter('woocommerce_cart_totals_order_total_html','exclude_tax_shipping',10,1);
+
+function exclude_tax_shipping()
+{
+    $shipping_tax = WC()->cart->get_shipping_tax();
+    $total = WC()->cart->get_total("float");
+    WC()->cart->set_total((string)((float)$total - $shipping_tax));
+    $value = '<strong>' . WC()->cart->get_total() . '</strong> ';
+
+    // If prices are tax inclusive, show taxes here.
+    if (wc_tax_enabled() && WC()->cart->display_prices_including_tax()) {
+        $tax_string_array = array();
+        $cart_tax_totals = WC()->cart->get_tax_totals();
+
+
+        if (get_option('woocommerce_tax_total_display') === 'itemized') {
+            foreach ($cart_tax_totals as $code => $tax) {
+                $tax_string_array[] = sprintf('%s %s', $tax->formatted_amount, $tax->label);
+            }
+        } elseif (!empty($cart_tax_totals)) {
+            $tax_string_array[] = sprintf('%s %s', wc_price(WC()->cart->get_taxes_total(true, true)), WC()->countries->tax_or_vat());
+        }
+
+        if (!empty($tax_string_array)) {
+            $taxable_address = WC()->customer->get_taxable_address();
+            /* translators: %s: country name */
+            $estimated_text = WC()->customer->is_customer_outside_base() && !WC()->customer->has_calculated_shipping() ? sprintf(' ' . __('estimated for %s', 'woocommerce'), WC()->countries->estimated_for_prefix($taxable_address[0]) . WC()->countries->countries[$taxable_address[0]]) : '';
+            /* translators: %s: tax information */
+            $value .= '<small class="includes_tax">' . sprintf(__('(includes %s)', 'woocommerce'), implode(', ', $tax_string_array) . $estimated_text) . '</small>';
+        }
+    }
+    return $value;
+}
+add_filter('woocommerce_get_formatted_order_total', 'fix_pfrice_in_admin'); //fix price total in admin
+function fix_pfrice_in_admin($formatted_total){
+    $order = wc_get_order();
+   $order_total = ((float)$order->get_total()) - ((float)$order->get_shipping_tax());
+   $formatted_total = wc_price( (string)$order_total, array( 'currency' => $order->get_currency() ) );
+   return $formatted_total;
+}
+////////
+///
+///
+
 ?>
