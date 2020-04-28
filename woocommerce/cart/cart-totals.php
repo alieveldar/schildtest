@@ -95,7 +95,7 @@ if($minimum - $subtotal >0 ){
 				? sprintf( ' ' . __( ' (taxes estimated for %s)', 'neighborhood' ), WC()->countries->estimated_for_prefix() . WC()->countries->countries[ WC()->countries->get_base_country() ] )
 				: '';
 
-			printf( __( 'Note: Shipping and taxes are estimated%s and will be updated during checkout based on your billing and shipping information.', 'neighborhood' ), $estimated_text );
+			printf( __( '', 'neighborhood' ), $estimated_text );
 
 		?></small></p>
 	<?php endif; ?>
